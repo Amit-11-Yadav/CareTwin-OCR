@@ -1,0 +1,5 @@
+ocr-env/
+ocr-env312/
+__pycache__/
+*.pyc
+preprocessed_debug.png

@@ -1,0 +1,5 @@
+Patient Report
+BP: 140/90
+Blood Sugar: 118
+Hemoglobin: 13.5
+Date: 15/03/2024

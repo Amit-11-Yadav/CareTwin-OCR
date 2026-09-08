@@ -1,0 +1,17 @@
+# Core pipeline (used by every script in this module)
+opencv-python-headless>=4.9
+pytesseract>=0.3.10
+Pillow>=10.0
+numpy>=1.26
+pdf2image>=1.17          # for multi-page PDF support (Week 6)
+
+# System dependency (not a pip package — install separately):
+#   Ubuntu/Debian: sudo apt install tesseract-ocr poppler-utils
+#   macOS:         brew install tesseract poppler
+#   Windows:       https://github.com/UB-Mannheim/tesseract/wiki
+
+# Alternative engines, benchmarked against Tesseract in the Week 1 bake-off
+# (each is heavier and downloads model weights on first run)
+easyocr>=1.7
+paddleocr>=2.7
+paddlepaddle>=2.6      # requires Python <=3.12 — see ocr-env312 for setup

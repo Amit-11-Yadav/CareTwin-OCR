@@ -1,0 +1,53 @@
+{
+  "report1.png": {
+    "bp_systolic": 140,
+    "bp_diastolic": 90,
+    "blood_sugar": 118,
+    "hemoglobin": 13.5,
+    "date": "2024-03-15"
+  },
+  "reporth1.webp": {
+    "bp_systolic": 120,
+    "bp_diastolic": 70
+  },
+  "report_02.jpg": {
+    "bp_systolic": 120,
+    "bp_diastolic": 80,
+    "blood_sugar": 110,
+    "hemoglobin": 13.2,
+    "cholesterol": 175,
+    "date": "2024-01-10"
+  },
+  "report_03.jpg": {
+    "bp_systolic": 135,
+    "bp_diastolic": 88,
+    "blood_sugar": 142,
+    "hemoglobin": 11.8,
+    "cholesterol": 210,
+    "date": "2025-06-22"
+  },
+  "report_04.jpg": {
+    "bp_systolic": 150,
+    "bp_diastolic": 95,
+    "blood_sugar": 98,
+    "hemoglobin": 14.1,
+    "cholesterol": 190,
+    "date": "2024-11-03"
+  },
+  "report_05.jpg": {
+    "bp_systolic": 118,
+    "bp_diastolic": 76,
+    "blood_sugar": 105,
+    "hemoglobin": 12.9,
+    "cholesterol": 165,
+    "date": "2025-02-17"
+  },
+  "report_06.jpg": {
+    "bp_systolic": 145,
+    "bp_diastolic": 92,
+    "blood_sugar": 160,
+    "hemoglobin": 10.5,
+    "cholesterol": 230,
+    "date": "2024-09-29"
+  }
+}

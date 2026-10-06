@@ -49,5 +49,71 @@
     "hemoglobin": 10.5,
     "cholesterol": 230,
     "date": "2024-09-29"
+  },
+  "cbc_01.jpg": {
+    "wbc_count": 6800,
+    "rbc_count": 5.1,
+    "hemoglobin": 14.0,
+    "hematocrit": 42.5,
+    "platelet_count": 310000,
+    "mcv": 85,
+    "mch": 28,
+    "mchc": 32,
+    "date": "2025-03-02"
+  },
+  "cbc_02.jpg": {
+    "wbc_count": 9100,
+    "rbc_count": 4.3,
+    "hemoglobin": 11.6,
+    "hematocrit": 36.0,
+    "platelet_count": 180000,
+    "mcv": 79,
+    "mch": 25,
+    "mchc": 31,
+    "date": "2025-07-18"
+  },
+  "lft_01.jpg": {
+    "sgot": 28,
+    "sgpt": 24,
+    "bilirubin_total": 0.7,
+    "alp": 102,
+    "total_protein": 7.0,
+    "albumin": 4.3,
+    "date": "2025-09-11"
+  },
+  "lft_02.jpg": {
+    "sgot": 65,
+    "sgpt": 72,
+    "bilirubin_total": 1.4,
+    "alp": 210,
+    "total_protein": 6.4,
+    "albumin": 3.6,
+    "date": "2025-04-29"
+  },
+  "urine_01.jpg": {
+    "urine_ph": 6.0,
+    "urine_specific_gravity": 1.015,
+    "urine_protein": "nil",
+    "urine_glucose": "nil",
+    "urine_blood": "negative",
+    "date": "2025-02-14"
+  },
+  "urine_02.jpg": {
+    "urine_ph": 5.5,
+    "urine_specific_gravity": 1.025,
+    "urine_protein": "trace",
+    "urine_glucose": "+2",
+    "urine_blood": "positive",
+    "date": "2025-10-03"
+  },
+  "real_cbc_report.jpeg": {
+    "hemoglobin": 11.5,
+    "rbc_count": 6.5,
+    "hematocrit": 45,
+    "mcv": 100,
+    "mch": 35,
+    "mchc": 33.0,
+    "wbc_count": 25000,
+    "platelet_count": 20000
   }
 }

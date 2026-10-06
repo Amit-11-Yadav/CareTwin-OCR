@@ -25,13 +25,36 @@ from pipeline import process_document
 
 # Numeric fields get a small tolerance since a "correct" OCR read can still
 # be off by rounding (e.g. hemoglobin 13.5 vs 13.6). Exact-match fields
-# (dates) get none — a wrong date is just wrong.
+# (dates, categorical urine results) get none — a wrong date is just wrong.
+#
+# Every numeric field extract_fields.py can produce MUST be listed here with
+# a tolerance, even 0 — otherwise it silently falls through to the string
+# comparison below, where int 7200 and float 7200.0 compare as different
+# strings ("7200" != "7200.0") and a CORRECT extraction gets scored wrong.
 NUMERIC_TOLERANCE = {
     "bp_systolic": 0,
     "bp_diastolic": 0,
     "blood_sugar": 0,
     "hemoglobin": 0.2,
     "cholesterol": 0,
+    # CBC
+    "wbc_count": 0,
+    "rbc_count": 0.1,
+    "platelet_count": 0,
+    "hematocrit": 0.2,
+    "mcv": 0.5,
+    "mch": 0.5,
+    "mchc": 0.5,
+    # LFT
+    "sgot": 0,
+    "sgpt": 0,
+    "bilirubin_total": 0.05,
+    "alp": 0,
+    "total_protein": 0.1,
+    "albumin": 0.1,
+    # Urine (numeric)
+    "urine_ph": 0.1,
+    "urine_specific_gravity": 0.002,
 }
 
 
@@ -73,7 +96,8 @@ def evaluate(data_dir: str, engines: list[str]) -> None:
 
         for engine in engines:
             try:
-                output = process_document(str(image_path), engine=engine)
+                # gate off: this script benchmarks the OCR engines themselves, including on hard images
+                output = process_document(str(image_path), engine=engine, quality_gate=False)
             except Exception as e:
                 print(f"ERROR running {engine} on {image_name}: {e}")
                 continue

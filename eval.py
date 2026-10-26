@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import time
 import json
 from pathlib import Path
 
@@ -55,7 +56,24 @@ NUMERIC_TOLERANCE = {
     # Urine (numeric)
     "urine_ph": 0.1,
     "urine_specific_gravity": 0.002,
+    # Blood sugar variants and HbA1c
+    "fasting_blood_sugar": 0,
+    "post_prandial_blood_sugar": 0,
+    "random_blood_sugar": 0,
+    "hba1c": 0.1,
+    # CBC differential count (percent)
+    "neutrophils_pct": 0,
+    "lymphocytes_pct": 0,
+    "eosinophils_pct": 0,
+    "monocytes_pct": 0,
+    "basophils_pct": 0,
 }
+
+
+def _flagged_for_field(field: str, flags: list) -> bool:
+    """True if the pipeline raised a flag about this specific field's value."""
+    prefix = "bp" if field.startswith("bp_") else field
+    return any(f.startswith(prefix + "_") for f in flags)
 
 
 def _field_matches(field: str, expected, actual) -> bool:
@@ -70,7 +88,7 @@ def _field_matches(field: str, expected, actual) -> bool:
     return str(expected).strip().lower() == str(actual).strip().lower()
 
 
-def evaluate(data_dir: str, engines: list[str]) -> None:
+def evaluate(data_dir: str, engines: list[str], upscale=None) -> None:
     data_path = Path(data_dir)
     ground_truth_path = data_path / "ground_truth.json"
     images_dir = data_path / "images"
@@ -87,6 +105,7 @@ def evaluate(data_dir: str, engines: list[str]) -> None:
     # results[engine][field] = [correct_count, total_count]
     results = {engine: {} for engine in engines}
     per_image_rows = []
+    seconds, docs = {}, {}     # run time per engine, to show what enlarging costs
 
     for image_name, expected_fields in ground_truth.items():
         image_path = images_dir / image_name
@@ -97,7 +116,10 @@ def evaluate(data_dir: str, engines: list[str]) -> None:
         for engine in engines:
             try:
                 # gate off: this script benchmarks the OCR engines themselves, including on hard images
-                output = process_document(str(image_path), engine=engine, quality_gate=False)
+                _t0 = time.time()
+                output = process_document(str(image_path), engine=engine, quality_gate=False, upscale=upscale)
+                seconds[engine] = seconds.get(engine, 0.0) + (time.time() - _t0)
+                docs[engine] = docs.get(engine, 0) + 1
             except Exception as e:
                 print(f"ERROR running {engine} on {image_name}: {e}")
                 continue
@@ -117,6 +139,7 @@ def evaluate(data_dir: str, engines: list[str]) -> None:
                     "expected": expected_value,
                     "actual": actual_fields.get(field),
                     "correct": correct,
+                    "flags": output["flags"],
                 })
 
     # --- Print per-image detail (useful for debugging specific misses) -----
@@ -147,8 +170,29 @@ def evaluate(data_dir: str, engines: list[str]) -> None:
         total_correct = sum(c for c, _ in results[engine].values())
         total_count = sum(t for _, t in results[engine].values())
         pct = 100 * total_correct / total_count if total_count else 0
-        print(f"{engine:12s}: {pct:.1f}% ({total_correct}/{total_count} fields correct)")
+        speed = f"  | {seconds[engine] / docs[engine]:.1f} s per document" if docs.get(engine) else ""
+        print(f"{engine:12s}: {pct:.1f}% ({total_correct}/{total_count} fields correct){speed}")
 
+    # --- What kind of miss was it? -----------------------------------------------
+    # All three count as a miss above, but they are very different in a health
+    # app:
+    #   not found        -> record goes to manual entry. Safe.
+    #   wrong + flagged  -> a wrong value, but the app marks it "please verify"
+    #                       (e.g. a lost decimal point lands out of range).
+    #   wrong + SILENT   -> a wrong value that looks fine and carries no flag.
+    #                       This is the one that can mislead, and the one that
+    #                       only a human comparing against the source image catches.
+    print("\n=== Misses: what kind? ===")
+    for engine in engines:
+        mine = [r for r in per_image_rows if r["engine"] == engine and not r["correct"]]
+        missing = [r for r in mine if r["actual"] is None]
+        wrong = [r for r in mine if r["actual"] is not None]
+        flagged = [r for r in wrong if _flagged_for_field(r["field"], r["flags"])]
+        silent = [r for r in wrong if not _flagged_for_field(r["field"], r["flags"])]
+        print(f"{engine:12s}: {len(missing)} not found (safe) | {len(flagged)} wrong but flagged | "
+              f"{len(silent)} wrong and SILENT")
+        for r in silent:
+            print(f"    SILENT: {r['image']} {r['field']} expected={r['expected']!r} got={r['actual']!r}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate OCR pipeline accuracy against ground truth.")
@@ -161,6 +205,12 @@ if __name__ == "__main__":
         "--data-dir", default="test_data",
         help="Folder containing ground_truth.json and images/ (default: test_data)",
     )
+    parser.add_argument(
+        "--upscale", choices=["auto", "on", "off"], default="auto",
+        help="enlarge small text before OCR: auto = per-engine default (Tesseract on, EasyOCR off), "
+             "on/off = force for every engine (default: auto)",
+    )
     args = parser.parse_args()
 
-    evaluate(args.data_dir, args.engines)
+    upscale = {"auto": None, "on": True, "off": False}[args.upscale]
+    evaluate(args.data_dir, args.engines, upscale=upscale)

@@ -57,7 +57,17 @@ def _pattern(keywords: str, value_regex: str) -> re.Pattern:
     # Only a LEADING word boundary — a trailing \b breaks whenever a keyword
     # can legitimately end in punctuation (e.g. "Blood (Urine)" ending in a
     # literal ")"), since \b can't fire between two non-word characters.
-    return re.compile(rf"\b(?:{keywords}){_CONNECTOR}{_SEP}\s*({value_regex})", re.IGNORECASE)
+    #
+    # \s* before the separator is required: OCR (EasyOCR especially) often
+    # emits "BP : 140/90" with a space ahead of the colon.
+    #
+    # Reference ranges ("50 - 62") are rejected in code by _is_range_bound(),
+    # not here — telling a range from a misread decimal ("33-00" for 33.00)
+    # needs a numeric comparison, which a regex can't do.
+    return re.compile(
+        rf"\b(?:{keywords}){_CONNECTOR}\s*{_SEP}\s*({value_regex})",
+        re.IGNORECASE,
+    )
 
 
 # --- Single-value numeric fields --------------------------------------------
@@ -76,7 +86,35 @@ _NUMERIC_FIELDS = {
         _pattern(r"Blood\s*Sugar|Glucose|RBS|FBS", r"\d{2,3}"),
         (40, 500), ["sugar", "glucose"],
     ),
+    # Specific sugar tests. A report that says "Fasting Blood Sugar 95" will
+    # fill BOTH fasting_blood_sugar and the generic blood_sugar above (the
+    # generic pattern also sees the words "Blood Sugar") — downstream code
+    # should prefer the specific field when it is present. No fuzzy fallback
+    # here: qualifier words like "fasting" are ordinary English and would
+    # fuzzy-match unrelated text such as "Fasting: 12 hours".
+    "fasting_blood_sugar": (
+        _pattern(r"Fasting\s*Blood\s*Sugar|Fasting\s*Glucose|FBS|FBG", r"\d{2,3}"),
+        (40, 500), None,
+    ),
+    "post_prandial_blood_sugar": (
+        _pattern(r"Post\s*Prandial\s*(?:Blood\s*)?(?:Sugar|Glucose)|PPBS|PP2BS|PPBG|PP\s*Blood\s*Sugar", r"\d{2,3}"),
+        (40, 600), None,
+    ),
+    "random_blood_sugar": (
+        _pattern(r"Random\s*Blood\s*Sugar|Random\s*Glucose|RBS|RBG", r"\d{2,3}"),
+        (40, 600), None,
+    ),
+    "hba1c": (
+        _pattern(r"HbA1c|Hb\s*A1c|Glycosylated\s*Hemoglobin|Glycated\s*Hemoglobin|A1c", r"\d{1,2}\.?\d?"),
+        (3.0, 15.0), ["glycosylated"],
+    ),
     "hemoglobin": (
+        # "Glycosylated Hemoglobin 7.2" (HbA1c) and "Mean Corpuscular
+        # Hemoglobin 29.5" (MCH) must NOT be read as plain hemoglobin — an
+        # HbA1c of 7.2% would otherwise show up as a hemoglobin of 7.2 g/dL,
+        # i.e. severe anemia. That is enforced in extract_fields() via
+        # _FUZZY_EXCLUDE_PRECEDING, which tolerates OCR misspellings of the
+        # preceding word (a regex lookbehind only catches exact spelling).
         _pattern(r"Hb|Hemoglobin|Haemoglobin", r"\d{1,2}\.?\d?"),
         (3.0, 20.0), ["hemoglobin", "haemoglobin"],
     ),
@@ -103,8 +141,24 @@ _NUMERIC_FIELDS = {
         (25, 60), ["hematocrit", "haematocrit"],
     ),
     "mcv": (_pattern(r"MCV", r"\d{2,3}\.?\d?"), (60, 110), None),
-    "mch": (_pattern(r"MCH(?!C)", r"\d{2}\.?\d?"), (18, 40), None),
-    "mchc": (_pattern(r"MCHC", r"\d{2}\.?\d?"), (28, 38), None),
+    "mch": (
+        _pattern(r"MCH(?!C)|Mean\s*Corpuscular\s*Hemoglobin(?!\s*Conc)", r"\d{2}\.?\d?"),
+        (18, 40), None,
+    ),
+    "mchc": (
+        _pattern(r"MCHC|Mean\s*Corpuscular\s*Hemoglobin\s*Conc\w*", r"\d{2}\.?\d?"),
+        (28, 38), None,
+    ),
+
+    # --- CBC differential WBC count (percentages) ---
+    # Ranges here are wide plausibility bounds for catching misreads, not
+    # clinical reference ranges. The labels are long, distinctive words, so
+    # they get a fuzzy fallback.
+    "neutrophils_pct": (_pattern(r"Neutrophils?", r"\d{1,2}\.?\d?"), (10, 95), ["neutrophils"]),
+    "lymphocytes_pct": (_pattern(r"Lymphocytes?", r"\d{1,2}\.?\d?"), (5, 80), ["lymphocytes"]),
+    "eosinophils_pct": (_pattern(r"Eosinophils?", r"\d{1,2}\.?\d?"), (0, 30), ["eosinophils"]),
+    "monocytes_pct": (_pattern(r"Monocytes?", r"\d{1,2}\.?\d?"), (0, 25), ["monocytes"]),
+    "basophils_pct": (_pattern(r"Basophils?", r"\d{1,2}\.?\d?"), (0, 10), ["basophils"]),
 
     # --- LFT: Liver Function Test ---
     "sgot": (_pattern(r"SGOT|AST", r"\d{1,4}"), (5, 200), None),
@@ -131,9 +185,67 @@ _NUMERIC_FIELDS = {
     ),
 }
 
+# Words that, when they directly precede a label, make it a DIFFERENT test.
+# The exact patterns handle this with regex lookbehinds; the fuzzy fallback
+# needs the same protection or it would walk straight past them.
+_FUZZY_EXCLUDE_PRECEDING = {
+    "hemoglobin": ("glycosylated", "glycated", "corpuscular"),
+}
+
 _FUZZY_CUTOFF = 0.75          # e.g. "cholesterat" vs "cholesterol" = 0.82
 _FUZZY_SEARCH_WINDOW = 20     # characters after the label to look for a number
 _WORD_RE = re.compile(r"[A-Za-z]+")
+
+
+def _is_excluded_word(word: str, field: str) -> bool:
+    """True if `word` (fuzzily) is one that turns this field's label into a different test."""
+    return any(
+        difflib.SequenceMatcher(None, word.lower(), ex).ratio() >= _FUZZY_CUTOFF
+        for ex in _FUZZY_EXCLUDE_PRECEDING.get(field, ())
+    )
+
+
+def _preceded_by_excluded(text: str, start: int, field: str) -> bool:
+    if field not in _FUZZY_EXCLUDE_PRECEDING:
+        return False
+    before = _WORD_RE.findall(text[:start])
+    return bool(before) and _is_excluded_word(before[-1], field)
+
+
+_NUM = r"\d+(?:\.\d+)?"
+_NUM_RE = re.compile(_NUM)
+# What can sit between the two ends of a printed range. OCR reads the dash in
+# "00 - 06" as many things; "=" was seen in a real EasyOCR run ("00 = 06").
+# Wrongly treating a separator as a range is safe (the value is simply not
+# used); the ascending-numbers rule below is what protects real results.
+_RANGE_SEP = r"(?:[-\u2013\u2014\u2212=~_]|\bto\b)"
+_DASH_THEN_NUM = re.compile(rf"\s*{_RANGE_SEP}\s*({_NUM})", re.IGNORECASE)
+_NUM_THEN_DASH = re.compile(rf"({_NUM})\s*{_RANGE_SEP}\s*$", re.IGNORECASE)
+
+
+def _is_range_bound(text: str, start: int) -> bool:
+    """
+    True if the number starting at text[start] is one end of a reference
+    range like "50 - 62" or "13.00 - 17.00".
+
+    Lab tables print a range beside every result, so when OCR misses the real
+    result the nearest number is a range bound — a plausible-looking WRONG
+    value, which is worse than no value.
+
+    A real range always ASCENDS (low - high). That is what separates it from
+    a decimal point OCR misread as a hyphen: "33-00" is 33.00, and 00 < 33.
+    """
+    m = _NUM_RE.match(text, start)
+    if not m:
+        return False
+    value = float(m.group())
+    after = _DASH_THEN_NUM.match(text, m.end())
+    if after and float(after.group(1)) > value:
+        return True    # lower bound of "value - higher"
+    before = _NUM_THEN_DASH.search(text[:start])
+    if before and float(before.group(1)) < value:
+        return True    # upper bound of "lower - value"
+    return False
 
 
 def _fuzzy_find(text: str, field: str) -> str | None:
@@ -145,11 +257,15 @@ def _fuzzy_find(text: str, field: str) -> str | None:
         token = match.group().lower()
         if len(token) < 5:
             continue  # too short for a safe fuzzy comparison
+        if _preceded_by_excluded(text, match.start(), field):
+            continue  # e.g. the "Hemoglobin" in "Glycosylated Hemoglobin" is a different test
         for kw in keywords:
             if difflib.SequenceMatcher(None, token, kw).ratio() >= _FUZZY_CUTOFF:
-                window = text[match.end(): match.end() + _FUZZY_SEARCH_WINDOW]
-                num_match = re.search(r"\d+\.?\d*", window)
-                if num_match:
+                start = match.end()
+                window = text[start: start + _FUZZY_SEARCH_WINDOW]
+                for num_match in re.finditer(r"\d+\.?\d*", window):
+                    if _is_range_bound(text, start + num_match.start()):
+                        continue  # a reference-range number, not the patient's result
                     return num_match.group()
     return None
 
@@ -289,7 +405,14 @@ def extract_fields(raw_text: str) -> dict:
             flags.append("bp_out_of_range")
 
     for key, (pattern, _range, _fuzzy_kw) in _NUMERIC_FIELDS.items():
-        m = pattern.search(text)
+        m = next(
+            (
+                c for c in pattern.finditer(text)
+                if not _preceded_by_excluded(text, c.start(), key)
+                and not _is_range_bound(text, c.start(1))
+            ),
+            None,
+        )
         matched_via_fuzzy = False
         if m:
             raw_value = m.group(1)

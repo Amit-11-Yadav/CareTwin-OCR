@@ -450,8 +450,11 @@ def stored_message(flags):
 def review_message(flags):
     """Say specifically WHY a processed result needs review, instead of one generic sentence."""
     missing = [f.replace("unparsed_", "").replace("_", " ") for f in flags if f.startswith("unparsed_")]
-    other = [f for f in flags if not f.startswith("unparsed_")]
+    other = [f for f in flags if not f.startswith("unparsed_") and f != "no_fields_found"]
     msgs = []
+    if "no_fields_found" in flags:
+        msgs.append("No lab values this system recognises could be read from this document. "
+                    "It may not be a lab report, or the image may be too unclear.")
     if missing:
         msgs.append("The text mentions " + ", ".join(missing) + " but no value could be read for it, so this extraction is incomplete.")
     if other:

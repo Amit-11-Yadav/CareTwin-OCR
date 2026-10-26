@@ -114,6 +114,11 @@
     "mch": 35,
     "mchc": 33.0,
     "wbc_count": 25000,
-    "platelet_count": 20000
+    "platelet_count": 20000,
+    "neutrophils_pct": 30,
+    "lymphocytes_pct": 60,
+    "eosinophils_pct": 2,
+    "monocytes_pct": 8,
+    "basophils_pct": 0
   }
 }

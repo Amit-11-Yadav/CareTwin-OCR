@@ -108,6 +108,32 @@ def character_height_cv(img: np.ndarray) -> float:
     return float(heights.std() / heights.mean())
 
 
+def median_char_height(img: np.ndarray) -> float:
+    """
+    Median height, in pixels at the image's OWN resolution, of the characters
+    on the page (0.0 if too few are found to judge).
+
+    Unlike character_height_cv this does NOT normalise the width first: OCR
+    engines care about how many pixels tall a letter actually is. Below roughly
+    20 px they start misreading digits and dropping decimal points (see
+    pipeline.candidate_scales).
+    """
+    g = _ink_on_light(img)
+    binary = cv2.adaptiveThreshold(
+        g, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 31, 15
+    )
+    n, _, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+    page_h = g.shape[0]
+    heights = [
+        stats[i][cv2.CC_STAT_HEIGHT]
+        for i in range(1, n)
+        if stats[i][cv2.CC_STAT_AREA] >= 6
+        and stats[i][cv2.CC_STAT_HEIGHT] >= 4
+        and stats[i][cv2.CC_STAT_HEIGHT] < page_h * 0.3
+    ]
+    return float(np.median(heights)) if len(heights) >= 10 else 0.0
+
+
 def assess_quality(img: np.ndarray) -> QualityReport:
     """
     img: grayscale image array (as loaded by cv2.imread(..., IMREAD_GRAYSCALE)).

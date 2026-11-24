@@ -17,9 +17,36 @@ Install (not needed for Tesseract, which is already required):
 """
 
 from dataclasses import dataclass
+import os
+import shutil
+from pathlib import Path
 import numpy as np
 import cv2
 import pytesseract
+
+
+def _configure_tesseract() -> None:
+    """Use an explicit Tesseract path when it is not available on PATH."""
+    configured_path = os.environ.get("TESSERACT_CMD")
+    if configured_path and Path(configured_path).is_file():
+        pytesseract.pytesseract.tesseract_cmd = configured_path
+        return
+
+    if shutil.which("tesseract"):
+        return
+
+    # Common Windows install locations. This keeps local setup working even
+    # when the installer did not add Tesseract to the system PATH.
+    for candidate in (
+        Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
+        Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
+    ):
+        if candidate.is_file():
+            pytesseract.pytesseract.tesseract_cmd = str(candidate)
+            return
+
+
+_configure_tesseract()
 
 
 @dataclass
